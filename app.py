@@ -29,7 +29,7 @@ class SpeakerInfo(BaseModel):
     start: float
     end: float
 
-@app.post("/get_speaker_data/")
+@app.post("/diarize/")
 async def get_speaker_data(audio_file: UploadFile = File(...)):
     audio_data = audio_file.file
 
