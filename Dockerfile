@@ -4,11 +4,12 @@ FROM python:3.10
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the Python scripts and requirements file
-COPY app.py main.py requirements.txt ./
+copy requirements.txt ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+run pip install -r requirements.txt
+
+# Copy the Python scripts and requirements file
+COPY app.py main.py ./
 
 # Expose the port that the FastAPI app will run on
 EXPOSE 3000
