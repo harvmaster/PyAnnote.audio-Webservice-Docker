@@ -7,6 +7,7 @@ import torchaudio
 from pydantic import BaseModel
 from pyannote.core import Annotation
 from pyannote.audio import Pipeline
+# import torch
 
 # Load environment variables
 HF_API_KEY = os.environ.get("HF_API_KEY")
@@ -19,6 +20,11 @@ if not HF_API_KEY:
     raise RuntimeError("Hugging Face API key not found in environment variables")
 
 # Initialize pipeline
+# torch.NumCudaDevices()
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# print(torch.cuda.get_device_name(device))
+# print(f"Using device: {device}")
+# print("CUDA Available:", torch.cuda.is_available())
 try:
     pipeline = Pipeline.from_pretrained(
         "pyannote/speaker-diarization-3.1",
