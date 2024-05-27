@@ -1,6 +1,6 @@
 import os
 import tempfile
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import torchaudio
@@ -8,18 +8,29 @@ from pydantic import BaseModel
 from pyannote.core import Annotation
 from pyannote.audio import Pipeline
 
+# Load environment variables
 HF_API_KEY = os.environ.get("HF_API_KEY")
-ORIGINS = os.environ.get("ALLOW_ORIGINS")
+ORIGINS = os.environ.get("ALLOW_ORIGINS", "*")
 
-pipeline = Pipeline.from_pretrained(
-    "pyannote/speaker-diarization",
-    use_auth_token=HF_API_KEY)
+print(f"Using Hugging Face API key: {HF_API_KEY}")
+
+# Check if API key is provided
+if not HF_API_KEY:
+    raise RuntimeError("Hugging Face API key not found in environment variables")
+
+# Initialize pipeline
+try:
+    pipeline = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization-3.1",
+        use_auth_token=HF_API_KEY)
+except Exception as e:
+    raise RuntimeError(f"Failed to load pipeline: {e}")
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins="*",
+    allow_origins=ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -32,27 +43,30 @@ class SpeakerInfo(BaseModel):
 
 @app.post("/diarize/")
 async def get_speaker_data(audio_file: UploadFile = File(...)):
-    audio_data = audio_file.file.read()
+    try:
+        audio_data = audio_file.file.read()
 
-    print(f"Received audio file: {audio_file.filename} with size: {len(audio_data)}")
+        print(f"Received audio file: {audio_file.filename} with size: {len(audio_data)}")
 
-    # Save audio data to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_audio_file:
-        tmp_audio_file.write(audio_data)
+        # Save audio data to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_audio_file:
+            tmp_audio_file.write(audio_data)
+            tmp_audio_file_path = tmp_audio_file.name
 
-    # Load the temporary file using torchaudio
-    waveform, sample_rate = torchaudio.load(tmp_audio_file.name)
-    
-    # Run diarization on the loaded waveform
-    diarization = pipeline({'audio': waveform, 'sample_rate': sample_rate})
-    annotation = diarization.get_timeline().to_annotation()
-    
-    speaker_data = []
+        # Run diarization on the temporary audio file
+        diarization = pipeline({'uri': 'temp_audio', 'audio': tmp_audio_file_path})
+        annotation = diarization.get_timeline().to_annotation()
 
-    for segment in annotation.itersegments():
-        speaker_data.append(SpeakerInfo(speaker=segment[2], start=segment[0], end=segment[1]))
+        speaker_data = []
 
-    # Delete the temporary file
-    os.unlink(tmp_audio_file.name)
+        for segment, track, label in annotation.itertracks(yield_label=True):
+            speaker_data.append(SpeakerInfo(speaker=label, start=segment.start, end=segment.end))
 
-    return speaker_data
+        # Delete the temporary file
+        os.unlink(tmp_audio_file_path)
+
+        return speaker_data
+
+    except Exception as e:
+        # Handle any other unexpected errors
+        raise HTTPException(status_code=500, detail=str(e))
